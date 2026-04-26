@@ -2,9 +2,15 @@
 # Licensed under the MIT License.
 # This file is part of AnonXMusic
 
+from ntgcalls import ConnectionNotFound, TelegramServerError, ConnectionError
 
-from ntgcalls import (ConnectionNotFound, TelegramServerError,
-                      RTMPStreamingUnsupported, ConnectionError)
+# RTMPStreamingUnsupported ko safe tarike se import karne ke liye
+try:
+    from ntgcalls import RTMPStreamingUnsupported
+except ImportError:
+    class RTMPStreamingUnsupported(Exception):
+        pass
+
 from pyrogram.errors import (ChatSendMediaForbidden, ChatSendPhotosForbidden,
                              MessageIdInvalid)
 from pyrogram.types import InputMediaPhoto, Message
@@ -179,6 +185,8 @@ class TgCall(PyTgCalls):
 
     async def ping(self) -> float:
         pings = [client.ping for client in self.clients]
+        if not pings:
+            return 0.0
         return round(sum(pings) / len(pings), 2)
 
 
@@ -186,8 +194,8 @@ class TgCall(PyTgCalls):
         @client.on_update()
         async def update_handler(_, update: types.Update) -> None:
             if isinstance(update, types.StreamEnded):
-                if update.stream_type == types.StreamEnded.Type.AUDIO:
-                    await self.play_next(update.chat_id)
+                # Update for newer pytgcalls versions
+                await self.play_next(update.chat_id)
             elif isinstance(update, types.ChatUpdate):
                 if update.status in [
                     types.ChatUpdate.Status.KICKED,
