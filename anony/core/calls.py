@@ -4,7 +4,7 @@
 
 from ntgcalls import ConnectionNotFound, TelegramServerError, ConnectionError
 
-# RTMPStreamingUnsupported ko safe tarike se import karne ke liye
+# RTMPStreamingUnsupported fix
 try:
     from ntgcalls import RTMPStreamingUnsupported
 except ImportError:
@@ -43,7 +43,7 @@ class TgCall(PyTgCalls):
         await db.set_loop(chat_id, 0)
 
         try:
-            await client.leave_call(chat_id, close=False)
+            await client.leave_call(chat_id)
         except Exception:
             pass
 
@@ -71,19 +71,13 @@ class TgCall(PyTgCalls):
             media_path=media.file_path,
             audio_parameters=types.AudioQuality.HIGH,
             video_parameters=types.VideoQuality.HD_720p,
-            audio_flags=types.MediaStream.Flags.REQUIRED,
-            video_flags=(
-                types.MediaStream.Flags.AUTO_DETECT
-                if media.video
-                else types.MediaStream.Flags.IGNORE
-            ),
             ffmpeg_parameters=f"-ss {seek_time}" if seek_time > 1 else None,
         )
+        
         try:
             await client.play(
                 chat_id=chat_id,
                 stream=stream,
-                config=types.GroupCallConfig(auto_start=False),
             )
             if not seek_time:
                 media.time = 1
@@ -127,21 +121,19 @@ class TgCall(PyTgCalls):
         except exceptions.NoActiveGroupCall:
             await self.stop(chat_id)
             await message.edit_text(_lang["error_no_call"])
-        except exceptions.NoAudioSourceFound:
-            await message.edit_text(_lang["error_no_audio"])
-            await self.play_next(chat_id)
         except (ConnectionError, ConnectionNotFound, TelegramServerError):
             await self.stop(chat_id)
             await message.edit_text(_lang["error_tg_server"])
         except RTMPStreamingUnsupported:
             await self.stop(chat_id)
             await message.edit_text(_lang["error_rtmp"])
+        except Exception as e:
+            logger.error(f"Error in play_media: {e}")
 
 
     async def replay(self, chat_id: int) -> None:
         if not await db.get_call(chat_id):
             return
-
         media = queue.get_current(chat_id)
         _lang = await lang.get_lang(chat_id)
         msg = await app.send_message(chat_id=chat_id, text=_lang["play_again"])
@@ -155,19 +147,14 @@ class TgCall(PyTgCalls):
             return await self.replay(chat_id)
 
         media = queue.get_next(chat_id)
-        try:
-            if media.message_id:
-                await app.delete_messages(
-                    chat_id=chat_id,
-                    message_ids=media.message_id,
-                    revoke=True,
-                )
-                media.message_id = 0
-        except Exception:
-            pass
-
         if not media:
             return await self.stop(chat_id)
+
+        try:
+            if media.message_id:
+                await app.delete_messages(chat_id, media.message_id)
+        except:
+            pass
 
         _lang = await lang.get_lang(chat_id)
         msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"])
@@ -175,9 +162,7 @@ class TgCall(PyTgCalls):
             media.file_path = await yt.download(media.id, video=media.video)
             if not media.file_path:
                 await self.play_next(chat_id)
-                return await msg.edit_text(
-                    _lang["error_no_file"].format(config.SUPPORT_CHAT)
-                )
+                return await msg.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
 
         media.message_id = msg.id
         await self.play_media(chat_id, msg, media)
@@ -185,30 +170,32 @@ class TgCall(PyTgCalls):
 
     async def ping(self) -> float:
         pings = [client.ping for client in self.clients]
-        if not pings:
-            return 0.0
-        return round(sum(pings) / len(pings), 2)
+        return round(sum(pings) / len(pings), 2) if pings else 0.0
 
 
     async def decorators(self, client: PyTgCalls) -> None:
-        @client.on_update()
-        async def update_handler(_, update: types.Update) -> None:
-            if isinstance(update, types.StreamEnded):
-                # Update for newer pytgcalls versions
-                await self.play_next(update.chat_id)
-            elif isinstance(update, types.ChatUpdate):
-                if update.status in [
-                    types.ChatUpdate.Status.KICKED,
-                    types.ChatUpdate.Status.LEFT_GROUP,
-                    types.ChatUpdate.Status.CLOSED_VOICE_CHAT,
-                ]:
-                    await self.stop(update.chat_id)
+        # PyTgCalls v2 New Decorators
+        @client.on_stream_ended()
+        async def stream_ended_handler(_, update: types.Update):
+            await self.play_next(update.chat_id)
+
+        @client.on_closed_voice_chat()
+        async def closed_handler(_, chat_id: int):
+            await self.stop(chat_id)
+
+        @client.on_kicked()
+        async def kicked_handler(_, chat_id: int):
+            await self.stop(chat_id)
+
+        @client.on_left_group()
+        async def left_handler(_, chat_id: int):
+            await self.stop(chat_id)
 
 
     async def boot(self) -> None:
         PyTgCallsSession.notice_displayed = True
         for ub in userbot.clients:
-            client = PyTgCalls(ub, cache_duration=100)
+            client = PyTgCalls(ub)
             await client.start()
             self.clients.append(client)
             await self.decorators(client)
