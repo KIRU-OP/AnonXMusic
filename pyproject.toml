@@ -14,6 +14,7 @@ dependencies = [
     "py-yt-search~=0.6.2",
     "pymongo>=4.16.0",
     "pytgcrypto>=1.2.11",
+    "pyrogram>=2.0.106",
     "python-dotenv~=1.2.1",
     "yt-dlp[default]>=2026.3.17",
 ]
