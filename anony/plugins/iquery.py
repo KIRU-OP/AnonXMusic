@@ -3,7 +3,7 @@
 # This file is part of AnonXMusic
 
 
-from py_yt import VideosSearch
+from youtubesearchpython.__future__ import VideosSearch
 from pyrogram import types
 
 from anony import app
