@@ -4,7 +4,7 @@
 
 from ntgcalls import ConnectionNotFound, TelegramServerError, ConnectionError
 
-# RTMPStreamingUnsupported fix
+# RTMPStreamingUnsupported Fix for newer ntgcalls
 try:
     from ntgcalls import RTMPStreamingUnsupported
 except ImportError:
@@ -67,10 +67,11 @@ class TgCall(PyTgCalls):
             await message.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
             return await self.play_next(chat_id)
 
+        # PyTgCalls 2.2.11 Stream Setup
         stream = types.MediaStream(
             media_path=media.file_path,
             audio_parameters=types.AudioQuality.HIGH,
-            video_parameters=types.VideoQuality.HD_720p,
+            video_parameters=types.VideoQuality.HD_720p if media.video else None,
             ffmpeg_parameters=f"-ss {seek_time}" if seek_time > 1 else None,
         )
         
@@ -174,7 +175,7 @@ class TgCall(PyTgCalls):
 
 
     async def decorators(self, client: PyTgCalls) -> None:
-        # PyTgCalls v2 New Decorators
+        # PyTgCalls 2.2.11 New Decorator System
         @client.on_stream_ended()
         async def stream_ended_handler(_, update: types.Update):
             await self.play_next(update.chat_id)
