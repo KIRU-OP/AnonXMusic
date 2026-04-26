@@ -2,11 +2,9 @@
 # Licensed under the MIT License.
 # This file is part of AnonXMusic
 
-
 import pyrogram
-
+from pyrogram.enums import ParseMode, ChatMemberStatus
 from anony import config, logger
-
 
 class Bot(pyrogram.Client):
     def __init__(self):
@@ -15,10 +13,15 @@ class Bot(pyrogram.Client):
             api_id=config.API_ID,
             api_hash=config.API_HASH,
             bot_token=config.BOT_TOKEN,
-            parse_mode=pyrogram.enums.ParseMode.HTML,
+            parse_mode=ParseMode.HTML,
             max_concurrent_transmissions=7,
-            link_preview_options=pyrogram.types.LinkPreviewOptions(is_disabled=True),
         )
+        # Link preview settings (Agar Pyrogram v2+ hai toh support karega)
+        try:
+            self.link_preview_options = pyrogram.types.LinkPreviewOptions(is_disabled=True)
+        except AttributeError:
+            self.link_preview_options = None
+            
         self.owner = config.OWNER_ID
         self.logger = config.LOGGER_ID
         self.bl_users = pyrogram.filters.user()
@@ -27,9 +30,6 @@ class Bot(pyrogram.Client):
     async def boot(self):
         """
         Starts the bot and performs initial setup.
-
-        Raises:
-            SystemExit: If the bot fails to access the log group or is not an administrator in the logger group.
         """
         await super().start()
         self.id = self.me.id
@@ -43,8 +43,9 @@ class Bot(pyrogram.Client):
         except Exception as ex:
             raise SystemExit(f"Bot has failed to access the log group: {self.logger}\nReason: {ex}")
 
-        if get.status != pyrogram.enums.ChatMemberStatus.ADMINISTRATOR:
+        if get.status != ChatMemberStatus.ADMINISTRATOR:
             raise SystemExit("Please promote the bot as an admin in logger group.")
+        
         logger.info(f"Bot started as @{self.username}")
 
     async def exit(self):
